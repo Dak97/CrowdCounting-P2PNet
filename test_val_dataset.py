@@ -13,6 +13,7 @@ from models import build_model
 import os
 from tensorboardX import SummaryWriter
 import warnings
+from winsound import Beep
 warnings.filterwarnings('ignore')
 
 def get_args_parser():
@@ -156,68 +157,30 @@ def main(args):
     writer = SummaryWriter(args.tensorboard_dir)
     
     step = 0
-    # training starts here
-    for epoch in range(args.start_epoch, args.epochs):
-        t1 = time.time()
-        stat = train_one_epoch(
-            model, criterion, data_loader_train, optimizer, device, epoch,
-            args.clip_max_norm)
+    # testing starts here
+    # run evaluation
+    t1 = time.time()
+    result = evaluate_crowd_no_overlap(model, data_loader_val, device, vis_dir='tested_im')
+    t2 = time.time()
 
-        # record the training states after every epoch
-        if writer is not None:
-            with open(run_log_name, "a") as log_file:
-                log_file.write("loss/loss@{}: {}".format(epoch, stat['loss']))
-                log_file.write("loss/loss_ce@{}: {}".format(epoch, stat['loss_ce']))
-                
-            writer.add_scalar('loss/loss', stat['loss'], epoch)
-            writer.add_scalar('loss/loss_ce', stat['loss_ce'], epoch)
-
-        t2 = time.time()
-        print('[ep %d][lr %.7f][%.2fs]' % \
-              (epoch, optimizer.param_groups[0]['lr'], t2 - t1))
-        with open(run_log_name, "a") as log_file:
-            log_file.write('[ep %d][lr %.7f][%.2fs]' % (epoch, optimizer.param_groups[0]['lr'], t2 - t1))
-        # change lr according to the scheduler
-        lr_scheduler.step()
-        # save latest weights every epoch
-        checkpoint_latest_path = os.path.join(args.checkpoints_dir, 'latest.pth')
-        torch.save({
-            'model': model_without_ddp.state_dict(),
-        }, checkpoint_latest_path)
-        # run evaluation
-        if epoch % args.eval_freq == 0 and epoch != 0:
-            t1 = time.time()
-            result = evaluate_crowd_no_overlap(model, data_loader_val, device)
-            t2 = time.time()
-
-            mae.append(result[0])
-            mse.append(result[1])
-            # print the evaluation results
-            print('=======================================test=======================================')
-            print("mae:", result[0], "mse:", result[1], "time:", t2 - t1, "best mae:", np.min(mae), )
-            with open(run_log_name, "a") as log_file:
-                log_file.write("mae:{}, mse:{}, time:{}, best mae:{}".format(result[0], 
-                                result[1], t2 - t1, np.min(mae)))
-            print('=======================================test=======================================')
-            # recored the evaluation results
-            if writer is not None:
-                with open(run_log_name, "a") as log_file:
-                    log_file.write("metric/mae@{}: {}".format(step, result[0]))
-                    log_file.write("metric/mse@{}: {}".format(step, result[1]))
-                writer.add_scalar('metric/mae', result[0], step)
-                writer.add_scalar('metric/mse', result[1], step)
-                step += 1
-
-            # save the best model since begining
-            if abs(np.min(mae) - result[0]) < 0.01:
-                checkpoint_best_path = os.path.join(args.checkpoints_dir, 'best_mae.pth')
-                torch.save({
-                    'model': model_without_ddp.state_dict(),
-                }, checkpoint_best_path)
+    mae.append(result[0])
+    mse.append(result[1])
+    # print the evaluation results
+    print('=======================================test=======================================')
+    print("mae:", result[0], "mse:", result[1], "time:", t2 - t1, "best mae:", np.min(mae), )
+    with open(run_log_name, "a") as log_file:
+        log_file.write("mae:{}, mse:{}, time:{}, best mae:{}".format(result[0], 
+                        result[1], t2 - t1, np.min(mae)))
+    print('=======================================test=======================================')
+           
+   
     # total time for training
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
-    print('Training time {}'.format(total_time_str))
+    print('Testing time {}'.format(total_time_str))
+
+    Beep(800, 2000)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('P2PNet training and evaluation script', parents=[get_args_parser()])

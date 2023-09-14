@@ -24,4 +24,6 @@ def loading_data(data_root):
     # create the validation dataset
     val_set = SHHA(data_root, train=False, transform=transform)
 
-    return train_set, val_set
+    test_set = SHHA(data_root, train=False, transform=transform, test=True)
+
+    return train_set, val_set, test_set

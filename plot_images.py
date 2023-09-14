@@ -2,12 +2,14 @@ from matplotlib import image, transforms
 
 from matplotlib import pyplot as plt
 from PIL import Image, ImageDraw, ImageOps
+import cv2
 
 PLOT_CROP = True
-file_image = '20160721_022014.jpg' 
+PLOT_ORIG = True
+file_image = '20160720_232510.jpg' 
 file_json = file_image.split('.')[0]
 points = []
-
+fig, (ax1, ax2) = plt.subplots(1, 2)
 if PLOT_CROP:
     im = image.imread(f'dataset/images_cropped/{file_image}')
     f = open(f'dataset/images_cropped/{file_json}.txt', 'r')
@@ -19,77 +21,82 @@ if PLOT_CROP:
     l = len(points)-1
     points = [(points[i], points[i+1]) for i in range(0,(len(points)-1),2)]
 
-# im_or = image.imread(f'dataset/images/{file_image}')
-# # im_crop = Image.open(f'images/{file_image}')
+if PLOT_ORIG:
+    im_or = image.imread(f'dataset/images/{file_image}')
+    # # im_crop = Image.open(f'images/{file_image}')
 
-# f_json = open(f'dataset/jsons/{file_json}.json', 'r')
-# data_json = eval(f_json.read())
+    f_json = open(f'dataset/jsons/{file_json}.json', 'r')
+    data = f_json.read()
+    if data.find('null'):
+        data = data.replace('null', 'None')
+    data_json = eval(data)
 
-# f_json.close()
-
-
-# num_cell = data_json['Cell Numbers']
-# print(f'Numero di cellule: {num_cell}')
-# cell_coord = []
-# for i in range(num_cell):
-#     coord = (int(data_json[f'Cell_{i}']['x1']), int(data_json[f'Cell_{i}']['y1']), int(data_json[f'Cell_{i}']['x2']), int(data_json[f'Cell_{i}']['y2']))
-#     cell_coord.append(coord)
-
-fig, (ax1, ax2) = plt.subplots(1, 2)
+    f_json.close()
 
 
-# for cell in cell_coord:
-#     p1 = [cell[0], cell[1]]
-#     p2 = [cell[2], cell[3]]
-
-#     p3 = [p2[0], p1[1]]
-#     p4 = [p1[0], p2[1]]
-
-#     x1 = [p1[0], p3[0]]
-#     y1 = [p1[1], p3[1]]
-#     x2 = [p3[0], p2[0]]
-#     y2 = [p3[1], p2[1]]
-#     x3 = [p2[0], p4[0]]
-#     y3 = [p2[1], p4[1]]
-#     x4 = [p4[0], p1[0]]
-#     y4 = [p4[1], p1[1]]
-
-#     print(p1, p2, im_or.shape)
-    
+    num_cell = data_json['Cell Numbers']
+    print(f'Numero di cellule: {num_cell}')
+    cell_coord = []
+    for i in range(num_cell):
+        coord = (int(data_json[f'Cell_{i}']['x1']), int(data_json[f'Cell_{i}']['y1']), int(data_json[f'Cell_{i}']['x2']), int(data_json[f'Cell_{i}']['y2']))
+        cell_coord.append(coord)
 
 
-#     xc = int ((p1[0] + p3[0]) / 2)
-#     yc = int ((p1[1] + p4[1]) / 2)
 
-#     ax1.plot(xc, yc, marker='.', color='white')
-#     ax1.plot(x1, y1,x2, y2,x3, y3, x4, y4, marker='.', color='red')
 
-# ax1.imshow(im_or)
+    for cell in cell_coord:
+        p1 = [cell[0], cell[1]]
+        p2 = [cell[2], cell[3]]
+
+        p3 = [p2[0], p1[1]]
+        p4 = [p1[0], p2[1]]
+
+        x1 = [p1[0], p3[0]]
+        y1 = [p1[1], p3[1]]
+        x2 = [p3[0], p2[0]]
+        y2 = [p3[1], p2[1]]
+        x3 = [p2[0], p4[0]]
+        y3 = [p2[1], p4[1]]
+        x4 = [p4[0], p1[0]]
+        y4 = [p4[1], p1[1]]
+
+        print(p1, p2, im_or.shape)
+        
+
+
+        xc = int ((p1[0] + p3[0]) / 2)
+        yc = int ((p1[1] + p4[1]) / 2)
+
+        ax1.plot(xc, yc, marker='.', color='white')
+        # ax1.plot(x1, y1,x2, y2,x3, y3, x4, y4, marker='.', color='red')
+
+    ax1.imshow(im_or)
 # plt.show()
-for cell in points:
-    # p1 = [cell[0], cell[1]]
-    # p2 = [cell[2], cell[3]]
-
-    # p3 = [p2[0], p1[1]]
-    # p4 = [p1[0], p2[1]]
-
-    # x1 = [p1[0], p3[0]]
-    # y1 = [p1[1], p3[1]]
-    # x2 = [p3[0], p2[0]]
-    # y2 = [p3[1], p2[1]]
-    # x3 = [p2[0], p4[0]]
-    # y3 = [p2[1], p4[1]]
-    # x4 = [p4[0], p1[0]]
-    # y4 = [p4[1], p1[1]]
-
-
-    # xc = int ((p1[0] + p3[0]) / 2)
-    # yc = int ((p1[1] + p4[1]) / 2)
-
-    ax2.plot(cell[0], cell[1], marker='.', color='red')
-    # plt.plot(x1, y1,x2, y2,x3, y3, x4, y4, marker='.', color='red')
-
 if PLOT_CROP:
+    for cell in points:
+        # p1 = [cell[0], cell[1]]
+        # p2 = [cell[2], cell[3]]
+
+        # p3 = [p2[0], p1[1]]
+        # p4 = [p1[0], p2[1]]
+
+        # x1 = [p1[0], p3[0]]
+        # y1 = [p1[1], p3[1]]
+        # x2 = [p3[0], p2[0]]
+        # y2 = [p3[1], p2[1]]
+        # x3 = [p2[0], p4[0]]
+        # y3 = [p2[1], p4[1]]
+        # x4 = [p4[0], p1[0]]
+        # y4 = [p4[1], p1[1]]
+
+
+        # xc = int ((p1[0] + p3[0]) / 2)
+        # yc = int ((p1[1] + p4[1]) / 2)
+
+        ax2.plot(cell[0], cell[1], marker='.', color='red')
+        # plt.plot(x1, y1,x2, y2,x3, y3, x4, y4, marker='.', color='red')
+
+
     ax2.imshow(im)
 plt.show()
 

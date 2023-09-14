@@ -9,32 +9,44 @@ import glob
 import scipy.io as io
 
 class SHHA(Dataset):
-    def __init__(self, data_root, transform=None, train=False, patch=False, flip=False):
+    def __init__(self, data_root, transform=None, train=False, patch=False, flip=False, test=False):
         self.root_path = data_root
-        self.train_lists = "shanghai_tech_part_a_train.list"
-        self.eval_list = "shanghai_tech_part_a_test.list"
+        self.train_lists = "train.list"
+        self.eval_list = "val.list"
+        self.test_list = "test.list"
+        self.is_testing = test
         # there may exist multiple list files
         self.img_list_file = self.train_lists.split(',')
         if train:
             self.img_list_file = self.train_lists.split(',')
         else:
             self.img_list_file = self.eval_list.split(',')
+        
+        if test:
+            self.img_list_file = self.test_list.split(',')
 
         self.img_map = {}
         self.img_list = []
+        
         # loads the image/gt pairs
         for _, train_list in enumerate(self.img_list_file):
+            i = 0
             train_list = train_list.strip()
             with open(os.path.join(self.root_path, train_list)) as fin:
                 for line in fin:
                     if len(line) < 2: 
                         continue
+                    # if (i == 3000 and train_list == 'train.list') or (i == 300 and train_list == 'val.list'):
+                    #     continue
+                    # else:
+                    #     i = i + 1
                     line = line.strip().split()
                     self.img_map[os.path.join(self.root_path, line[0].strip())] = \
                                     os.path.join(self.root_path, line[1].strip())
         self.img_list = sorted(list(self.img_map.keys()))
         # number of samples
         self.nSamples = len(self.img_list)
+        print(f'sample:{self.nSamples}')
         
         self.transform = transform
         self.train = train
@@ -82,13 +94,18 @@ class SHHA(Dataset):
         img = torch.Tensor(img)
         # pack up related infos
         target = [{} for i in range(len(point))]
+        
         for i, _ in enumerate(point):
             target[i]['point'] = torch.Tensor(point[i])
             image_id = int(img_path.split('/')[-1].split('.')[0].split('_')[-1])
             image_id = torch.Tensor([image_id]).long()
+            pre_image_id = int(img_path.split("/")[-1].split(".")[0].split("_")[0])
+            pre_image_id = torch.Tensor([pre_image_id]).long()
             target[i]['image_id'] = image_id
+            if self.is_testing:
+                target[i]['path'] = img_path
             target[i]['labels'] = torch.ones([point[i].shape[0]]).long()
-
+        # print(target)
         return img, target
 
 

@@ -82,7 +82,13 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
     metric_logger = utils.MetricLogger(delimiter="  ")
     metric_logger.add_meter('lr', utils.SmoothedValue(window_size=1, fmt='{value:.6f}'))
     # iterate all training samples
+    i=0
+    len_dataloader = len(data_loader)
+    time_left_start = time.time()
     for samples, targets in data_loader:
+        i += 1
+        print(f'{i}/{len_dataloader} time left: {calcProcessTime(time_left_start, i, len_dataloader)} sec.', end='\r')
+
         samples = samples.to(device)
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
         # forward
@@ -125,12 +131,19 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
 def evaluate_crowd_no_overlap(model, data_loader, device, vis_dir=None):
     model.eval()
 
+    print('Running validation\n')
     metric_logger = utils.MetricLogger(delimiter="  ")
     metric_logger.add_meter('class_error', utils.SmoothedValue(window_size=1, fmt='{value:.2f}'))
     # run inference on all images to calc MAE
     maes = []
     mses = []
+    i=0
+    len_dataloader = len(data_loader)
+    time_left_start = time.time()
     for samples, targets in data_loader:
+        i += 1
+        print(f'{i}/{len_dataloader} time left: {calcProcessTime(time_left_start, i, len_dataloader)} sec.', end='\r')
+
         samples = samples.to(device)
 
         outputs = model(samples)
@@ -155,5 +168,14 @@ def evaluate_crowd_no_overlap(model, data_loader, device, vis_dir=None):
     # calc MAE, MSE
     mae = np.mean(maes)
     mse = np.sqrt(np.mean(mses))
-
+   
     return mae, mse
+
+def calcProcessTime(starttime, cur_iter, max_iter):
+
+    telapsed = time.time() - starttime
+    testimated = (telapsed/cur_iter)*(max_iter)
+
+    lefttime = testimated-telapsed  # in seconds
+
+    return int(lefttime)
