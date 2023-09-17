@@ -9,6 +9,12 @@ import torchvision.transforms as standard_transforms
 from torch.utils.data import DataLoader
 import numpy as np
 
+from sklearn.neighbors import NearestNeighbors
+from sklearn.metrics.pairwise import pairwise_distances
+from sklearn.metrics import r2_score
+
+from scipy.stats import pearsonr
+
 from PIL import Image
 import cv2
 from crowd_datasets import build_dataset
@@ -46,18 +52,35 @@ def get_args_parser():
 
     return parser
 
+def average_hausdorff_distance(preds, gts, max_ahd):
+
+    if len(preds) == 0 or len(gts) == 0:
+        return max_ahd
+    
+    preds = np.array(preds)
+    gts = np.array(gts)
+
+    assert preds.shape[1] == gts.shape[1]
+
+    d_matrix = pairwise_distances(preds, gts, metric='euclidean')
+
+    return np.average(np.min(d_matrix, axis=0)) + np.average(np.min(d_matrix, axis=1))
+
+
 def main(args, debug=False):
 
     CUDA = True
-    SAVE = True
+    SAVE = False
+
+    
 
     os.environ["CUDA_VISIBLE_DEVICES"] = '{}'.format(args.gpu_id)
     if not CUDA:
         torch.cuda.is_available = lambda : False
         device = torch.device('cpu')
-        print(torch.cuda.is_available())
+        print(f'CUDA:{torch.cuda.is_available()}')
     else:
-        print(torch.cuda.is_available())
+        print(f'CUDA:{torch.cuda.is_available()}')
         # print(torch.cuda.memory_summary(device=None, abbreviated=False))
         device = torch.device('cuda')
     print(args)
@@ -87,48 +110,33 @@ def main(args, debug=False):
                                     drop_last=False, collate_fn=utils.collate_fn_crowd, num_workers=args.num_workers)
     
     
-        
-
     
-    # names = os.listdir('dataset/dataset_WBC/test/scene01')[:4]
+    all_preds = []
+    all_gts = []
 
-    # names = list(filter(lambda x: x.split('.')[1]=='jpg', names))
-    maes = []
-    mses = []
+    metrics = {i:[0,0,0] for i in range(1, 16)}
+
+    sum_ahd = 0
+
+    sum_e = 0
+    sum_ae = 0
+    sum_se = 0
+    sum_pe = 0
+    sum_ape = 0
     i = 0
     print(len(data_loader_test))
     t1 = time.time()
     for samples, targets in data_loader_test:
         i += 1
         print(f'{i}/{len(data_loader_test)}', end='\r')
-        # print(targets[0])
-        # pre_im = str(targets[0]['pre_image_id'].item())
-        # name_im = str(targets[0]['image_id'].item())
-        # if len(name_im) < 6:
-        #     name_im = '00'+name_im
-        # file_name = f'{pre_im}_{name_im}.jpg'
-
+       
         img_path = targets[0]['path']
         file_name = targets[0]['path'].split('/')[-1].split('.')[0]
 
         gts = [t['point'].tolist() for t in targets]
-        # # set your image path here
-        # # file_name = '20160720_232423'
-        # img_path = f'dataset/dataset_WBC/test/scene01/{file_name}'
-        # # load the images
+       
         img_raw = Image.open(img_path).convert('RGB')
-        # # round the size
-        
-        # width, height = img_raw.size
-        # new_width = width // 128 * 128
-        # new_height = height // 128 * 128
-        # img_raw = img_raw.resize((new_width, new_height), Image.ANTIALIAS)
-        # # pre-proccessing
-        # img = transform(img_raw)
 
-        # samples = torch.Tensor(img).unsqueeze(0)
-        # # samples = samples.to('cuda')
-        # # print(samples.get_device())
         samples = samples.to(device)
         # run inference
         outputs = model(samples)
@@ -139,18 +147,50 @@ def main(args, debug=False):
         threshold = 0.5
         # filter the predictions
         points = outputs_points[outputs_scores > threshold].detach().cpu().numpy().tolist()
+
         predict_cnt = int((outputs_scores > threshold).sum())
-
-        outputs_scores = torch.nn.functional.softmax(outputs['pred_logits'], -1)[:, :, 1][0]
-
-        outputs_points = outputs['pred_points'][0]
-        
         gt_cnt = targets[0]['point'].shape[0]
 
-        mae = abs(predict_cnt - gt_cnt)
-        mse = (predict_cnt - gt_cnt) * (predict_cnt - gt_cnt)
-        maes.append(float(mae))
-        mses.append(float(mse))
+        all_preds.append(predict_cnt)
+        all_gts.append(gt_cnt)
+
+        # print(img_path)
+
+        if len(points) == 0:
+            tp = 0
+            fp = 0
+            fn = len(gts[0])
+        else:
+            for rad in range(1, 16):
+                nbr = NearestNeighbors(n_neighbors=1, metric='euclidean').fit(gts[0])
+                dis, idx = nbr.kneighbors(points)
+                detected_pts = (dis[:, 0] <= rad).astype(np.uint8)
+
+                nbr = NearestNeighbors(n_neighbors=1, metric='euclidean').fit(points)
+                dis, idx = nbr.kneighbors(gts[0])
+                detected_gt = (dis[:, 0] <= rad).astype(np.uint8)
+                
+                tp = np.sum(detected_pts)
+                fp = len(points) - tp
+                fn = len(gts[0]) - np.sum(detected_gt)
+            
+                metrics[rad][0] += tp
+                metrics[rad][1] += fp
+                metrics[rad][2] += fn
+                
+               
+        sum_ahd += average_hausdorff_distance(points,gts[0], math.sqrt(img_raw.size[0]**2 + img_raw.size[1]**2))
+        sum_e += predict_cnt - gt_cnt
+        sum_ae += abs(predict_cnt - gt_cnt)
+        sum_se += (predict_cnt - gt_cnt)**2
+        sum_pe += (predict_cnt - gt_cnt) * 100 if gt_cnt == 0 else (predict_cnt -gt_cnt) * 100 / gt_cnt
+        sum_ape += abs(predict_cnt - gt_cnt) * 100 if gt_cnt == 0 else abs(predict_cnt - gt_cnt) * 100 / gt_cnt
+
+        # mae = abs(predict_cnt - gt_cnt)
+        # mse = (predict_cnt - gt_cnt) * (predict_cnt - gt_cnt)
+        # maes.append(float(mae))
+        # mses.append(float(mse))
+
         # # draw the predictions
         if SAVE:
             size = 2
@@ -164,14 +204,33 @@ def main(args, debug=False):
             # save the visualized image
             cv2.imwrite(os.path.join(args.output_dir, file_name+'_pred_{}.jpg'.format(predict_cnt)), img_to_draw_pred)
             cv2.imwrite(os.path.join(args.output_dir, file_name+'_gt_{}.jpg'.format(gt_cnt)), img_to_draw_gt)
-            # if i > 10:
-            #     break
+        # if i > 200:
+        #     break
         
 
-    mae = np.mean(maes)
-    mse = np.sqrt(np.mean(mses))
+    # mae = np.mean(maes)
+    # mse = np.sqrt(np.mean(mses))
+    mahd = float(sum_ahd / i)
+    me = float(sum_e / i)
+    mae = float(sum_ae / i)
+    mse = float(sum_se / i)
+    mpe = float(sum_pe / i)
+    mape = float(sum_ape / i)
+    rmse = float(math.sqrt(mse))
+    coeff_det = r2_score(all_gts, all_preds)
+    person = pearsonr(all_gts, all_preds)[0]
+
+    f_metrics = open('metrics.txt', 'w')
+    for r in range(1, 16):
+        precision = float(100*metrics[r][0] / (metrics[r][0] + metrics[r][1]))
+        recall = float(100*metrics[r][0] / (metrics[r][0] + metrics[r][2]))
+        f_metrics.write(f'rad:{r} - precision: {precision}, recall: {recall}, fscore: {float(2 * (precision*recall /(precision+recall)))}\n')
+        print(f'rad:{r} - precision: {precision}, recall: {recall}, fscore: {float(2 * (precision*recall /(precision+recall)))}')
     t2 = time.time()
-    print(f'mae: {mae} mse: {mse} time: {t2 - t1}')
+    f_metrics.write(f'ME: {me}, MPE: {mpe}, MAPE: {mape}, MAE: {mae}, MSE: {mse}, RMSE: {rmse}, C_DET: {coeff_det}, PERSON: {person},  MAHD: {mahd}\n')
+    print(f'ME: {me}, MPE: {mpe}, MAPE: {mape}, MAE: {mae}, MSE: {mse}, RMSE: {rmse}, C_DET: {coeff_det}, PERSON: {person},  MAHD: {mahd} time: {t2 - t1}')
+
+    f_metrics.close()
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('P2PNet evaluation script', parents=[get_args_parser()])
     args = parser.parse_args()
